@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request
 import pandas as pd
 import numpy as np
 import re
@@ -11,16 +11,8 @@ import csv
 from io import StringIO
 import pickle
 import os
-import threading
 
 app = Flask(__name__)
-
-# Global variables to store data
-df = None
-cosine_sim = None
-ground_truth = None
-loading_completed = False
-loading_error = None
 
 
 def format_category(text):
@@ -40,7 +32,7 @@ def process_reviews(row):
         n_users = len(users)
         if n_users == 0:
             return []
-
+            
         # Process review IDs
         review_ids = []
         if pd.notna(row['review_id']):
@@ -157,18 +149,13 @@ def average_precision_at_k(recommended, ground_truth, k):
     return score / min(len(ground_truth), k)
 
 
-def load_data_async():
-    """Load data in a background thread"""
-    global df, cosine_sim, ground_truth, loading_completed, loading_error
-    
-    try:
-        # Load basic data first for quick startup
+def load_data():
     df = pd.read_csv("amazon.csv")
     df = df.dropna().drop_duplicates()
 
-        df['discount_percentage'] = df['discount_percentage'].astype(str).str.replace('%', '').astype(float)
-        df['rating'] = pd.to_numeric(df['rating'].astype(str).str.replace('|', ''), errors='coerce')
-        df['rating_count'] = df['rating_count'].astype(str).str.replace(',', '').astype(int)
+    df['discount_percentage'] = df['discount_percentage'].astype(str).str.replace('%', '').astype(float)
+    df['rating'] = pd.to_numeric(df['rating'].astype(str).str.replace('|', ''), errors='coerce')
+    df['rating_count'] = df['rating_count'].astype(str).str.replace(',', '').astype(int)
 
     # Clean text data
     stop_words = set(stopwords.words('english'))
@@ -185,74 +172,61 @@ def load_data_async():
 
     # Process reviews
     df['reviews'] = df.apply(process_reviews, axis=1)
-
-        # Create combined text for feature extraction
-        df['text_corpus'] = (
-            df['product_name'].fillna('') + ' ' +
-            df['category'].fillna('') + ' ' +
-            df['about_product'].fillna('')
-        )
+    
+    # Create combined text for feature extraction
+    df['text_corpus'] = (
+        df['product_name'].fillna('') + ' ' +
+        df['category'].fillna('') + ' ' +
+        df['about_product'].fillna('')
+    )
+    
+    # Load precomputed similarity matrix or compute if not available
+    cosine_sim_path = "cosine_similarity_matrix.pkl"
+    ground_truth_path = "ground_truth.pkl"
+    
+    # Load or compute similarity matrix
+    if os.path.exists(cosine_sim_path):
+        print("Loading precomputed similarity matrix...")
+        with open(cosine_sim_path, 'rb') as f:
+            cosine_sim = pickle.load(f)
+    else:
+        # Backup: compute similarity matrix if precomputed one isn't available
+        print("Precomputed similarity matrix not found. Computing now...")
+        vectorizer = TfidfVectorizer(stop_words='english', max_df=0.95, min_df=2)
+        tfidf_matrix = vectorizer.fit_transform(df['text_corpus'].fillna(''))
+        cosine_sim = cosine_similarity(tfidf_matrix)
         
-        # Try to load pre-computed matrices first
-        cosine_sim_path = "cosine_similarity_matrix.pkl"
-        ground_truth_path = "ground_truth.pkl"
+        # Save for next time
+        with open(cosine_sim_path, 'wb') as f:
+            pickle.dump(cosine_sim, f)
+    
+    # Ensure DataFrame is aligned with similarity matrix
+    df = df.iloc[:cosine_sim.shape[0]].reset_index(drop=True)
+    print(f"DataFrame size after alignment: {len(df)}, Cosine matrix size: {cosine_sim.shape[0]}")
+    
+    # Load or compute ground truth
+    if os.path.exists(ground_truth_path):
+        print("Loading precomputed ground truth...")
+        with open(ground_truth_path, 'rb') as f:
+            ground_truth = pickle.load(f)
+    else:
+        print("Precomputed ground truth not found. Computing now...")
+        ground_truth = build_ground_truth(df, cosine_sim)
         
-        if os.path.exists(cosine_sim_path) and os.path.exists(ground_truth_path):
-            print("Loading precomputed similarity matrix and ground truth...")
-            with open(cosine_sim_path, 'rb') as f:
-                cosine_sim = pickle.load(f)
-            with open(ground_truth_path, 'rb') as f:
-                ground_truth = pickle.load(f)
-                
-            # Ensure DataFrame is aligned with similarity matrix
-            df = df.iloc[:cosine_sim.shape[0]].reset_index(drop=True)
-            print(f"DataFrame size after alignment: {len(df)}, Cosine matrix size: {cosine_sim.shape[0]}")
-        else:
-            # We'll compute a smaller similarity matrix for demo purposes
-            print("Precomputed files not found. Creating a smaller demo version...")
-            # Use only first 1000 items for quick startup
-            small_df = df.head(1000).copy()
-            df = small_df
-            vectorizer = TfidfVectorizer(stop_words='english', max_df=0.95, min_df=2)
-            tfidf_matrix = vectorizer.fit_transform(small_df['text_corpus'].fillna(''))
-            cosine_sim = cosine_similarity(tfidf_matrix)
-            
-            # Build a smaller ground truth
-            ground_truth = build_ground_truth(small_df, cosine_sim)
-            
-            # Save for next time
-            with open(cosine_sim_path, 'wb') as f:
-                pickle.dump(cosine_sim, f)
-            with open(ground_truth_path, 'wb') as f:
-                pickle.dump(ground_truth, f)
-            
-        loading_completed = True
-    except Exception as e:
-        loading_error = str(e)
-        print(f"Error loading data: {e}")
-        # Still mark as completed to allow the app to function
-        loading_completed = True
+        # Save for next time
+        with open(ground_truth_path, 'wb') as f:
+            pickle.dump(ground_truth, f)
+    
+    return df, cosine_sim, ground_truth
 
 
-# Start loading data in background thread
-threading.Thread(target=load_data_async, daemon=True).start()
+df, cosine_sim, ground_truth = load_data()
 
 
 def get_recommendations(product_id, num=5):
-    """Get recommendations for a product"""
-    global df, cosine_sim, ground_truth
-    
-    # If data isn't loaded yet, return empty DataFrame
-    if not loading_completed or df is None or cosine_sim is None:
-        return pd.DataFrame()
-    
     try:
         # Get the index of the product
-        product_indices = df.index[df['product_id'] == product_id].tolist()
-        if not product_indices:
-            return pd.DataFrame()
-            
-        idx = product_indices[0]
+        idx = df.index[df['product_id'] == product_id].tolist()[0]
         
         # Verify idx is within bounds of cosine_sim
         if idx >= cosine_sim.shape[0]:
@@ -292,24 +266,8 @@ def get_recommendations(product_id, num=5):
 
 @app.route('/')
 def home():
-    """Home page and healthcheck endpoint"""
-    # For healthcheck when the app is starting up
-    if request.headers.get('User-Agent', '').startswith('Railway-Health'):
-        return jsonify({"status": "ok"})
-    
-    # For regular users
-    if not loading_completed:
-        return "Application is starting up. Please wait a moment and refresh the page."
-        
-    if loading_error:
-        return f"Error loading data: {loading_error}"
-        
     query = request.args.get('query', '').strip()
-    
-    try:
-        featured_products = df.sample(min(12, len(df)))
-    except Exception as e:
-        featured_products = df.head(12) if df is not None and len(df) > 0 else pd.DataFrame()
+    featured_products = df.sample(12)
 
     if query:
         search_results = df[df['product_name'].str.contains(query, case=False)]
@@ -324,53 +282,31 @@ def home():
 
 @app.route('/product/<product_id>')
 def product_detail(product_id):
-    """Product detail page"""
-    if not loading_completed:
-        return "Application is starting up. Please wait a moment and refresh the page."
-        
     try:
-        product_rows = df[df['product_id'] == product_id]
-        if product_rows.empty:
-            return "Product not found", 404
-            
-        product = product_rows.iloc[0]
-    recommendations = get_recommendations(product_id)
+        product = df[df['product_id'] == product_id].iloc[0]
+        recommendations = get_recommendations(product_id)
         reviews = product['reviews'][:5]  # Show first 5 reviews on product page
-    total_reviews = len(product['reviews'])
-    return render_template('product.html',
-                           product=product,
-                           recommendations=recommendations,
-                           reviews=reviews,
-                           total_reviews=total_reviews)
+        total_reviews = len(product['reviews'])
+        return render_template('product.html',
+                            product=product,
+                            recommendations=recommendations,
+                            reviews=reviews,
+                            total_reviews=total_reviews)
     except Exception as e:
         print(f"Error rendering product page: {e}")
-        return f"Error loading product: {str(e)}", 500
+        return "Product not found or error loading product details", 404
 
 
 @app.route('/product/<product_id>/reviews')
 def product_reviews(product_id):
-    """Product reviews page"""
-    if not loading_completed:
-        return "Application is starting up. Please wait a moment and refresh the page."
-        
     try:
-        product_rows = df[df['product_id'] == product_id]
-        if product_rows.empty:
-            return "Product not found", 404
-            
-        product = product_rows.iloc[0]
-    return render_template('reviews.html',
-                           product=product,
-                           reviews=product['reviews'])
+        product = df[df['product_id'] == product_id].iloc[0]
+        return render_template('reviews.html',
+                            product=product,
+                            reviews=product['reviews'])
     except Exception as e:
         print(f"Error rendering reviews page: {e}")
-        return f"Error loading reviews: {str(e)}", 500
-
-
-@app.route('/health')
-def health_check():
-    """Explicit health check endpoint"""
-    return jsonify({"status": "ok"})
+        return "Product not found or error loading reviews", 404
 
 
 if __name__ == '__main__':
