@@ -1,11 +1,13 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "pip install -r requirements.txt && python -c \"import nltk; nltk.download('stopwords'); nltk.download('wordnet')\" && python export_similarity_matrix.py"
+buildCommand = "pip install -r requirements.txt && python -c \"import nltk; nltk.download('stopwords'); nltk.download('wordnet')\""
 
 [deploy]
-startCommand = "gunicorn app:app"
-healthcheckPath = "/"
-healthcheckTimeout = 300  # Longer timeout for initial matrix generation
+startCommand = "gunicorn app:app --log-level debug"
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on-failure"
+restartPolicyMaxRetries = 5
 
 [nixpacks]
 python-version = "3.11.7" 
