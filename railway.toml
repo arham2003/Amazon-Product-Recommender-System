@@ -6,8 +6,6 @@ buildCommand = "pip install -r requirements.txt && python -c \"import nltk; nltk
 startCommand = "gunicorn app:app --log-level debug"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
-restartPolicyType = "on-failure"
-restartPolicyMaxRetries = 5
 
 [nixpacks]
 python-version = "3.11.7" 

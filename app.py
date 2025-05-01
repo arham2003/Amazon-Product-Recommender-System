@@ -40,7 +40,7 @@ def process_reviews(row):
         n_users = len(users)
         if n_users == 0:
             return []
-            
+
         # Process review IDs
         review_ids = []
         if pd.notna(row['review_id']):
@@ -163,29 +163,29 @@ def load_data_async():
     
     try:
         # Load basic data first for quick startup
-        df = pd.read_csv("amazon.csv")
-        df = df.dropna().drop_duplicates()
+    df = pd.read_csv("amazon.csv")
+    df = df.dropna().drop_duplicates()
 
         df['discount_percentage'] = df['discount_percentage'].astype(str).str.replace('%', '').astype(float)
         df['rating'] = pd.to_numeric(df['rating'].astype(str).str.replace('|', ''), errors='coerce')
         df['rating_count'] = df['rating_count'].astype(str).str.replace(',', '').astype(int)
 
-        # Clean text data
-        stop_words = set(stopwords.words('english'))
+    # Clean text data
+    stop_words = set(stopwords.words('english'))
 
-        def clean_text(text):
-            text = str(text).lower()
-            text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
-            text = ' '.join([word for word in text.split() if word not in stop_words])
-            return text
+    def clean_text(text):
+        text = str(text).lower()
+        text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+        text = ' '.join([word for word in text.split() if word not in stop_words])
+        return text
 
-        text_columns = ['product_name', 'category', 'about_product']
-        for col in text_columns:
-            df[col] = df[col].apply(clean_text)
+    text_columns = ['product_name', 'category', 'about_product']
+    for col in text_columns:
+        df[col] = df[col].apply(clean_text)
 
-        # Process reviews
-        df['reviews'] = df.apply(process_reviews, axis=1)
-        
+    # Process reviews
+    df['reviews'] = df.apply(process_reviews, axis=1)
+
         # Create combined text for feature extraction
         df['text_corpus'] = (
             df['product_name'].fillna('') + ' ' +
@@ -334,14 +334,14 @@ def product_detail(product_id):
             return "Product not found", 404
             
         product = product_rows.iloc[0]
-        recommendations = get_recommendations(product_id)
+    recommendations = get_recommendations(product_id)
         reviews = product['reviews'][:5]  # Show first 5 reviews on product page
-        total_reviews = len(product['reviews'])
-        return render_template('product.html',
-                            product=product,
-                            recommendations=recommendations,
-                            reviews=reviews,
-                            total_reviews=total_reviews)
+    total_reviews = len(product['reviews'])
+    return render_template('product.html',
+                           product=product,
+                           recommendations=recommendations,
+                           reviews=reviews,
+                           total_reviews=total_reviews)
     except Exception as e:
         print(f"Error rendering product page: {e}")
         return f"Error loading product: {str(e)}", 500
@@ -359,9 +359,9 @@ def product_reviews(product_id):
             return "Product not found", 404
             
         product = product_rows.iloc[0]
-        return render_template('reviews.html',
-                            product=product,
-                            reviews=product['reviews'])
+    return render_template('reviews.html',
+                           product=product,
+                           reviews=product['reviews'])
     except Exception as e:
         print(f"Error rendering reviews page: {e}")
         return f"Error loading reviews: {str(e)}", 500
