@@ -1,0 +1,11 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r requirements.txt && python -c \"import nltk; nltk.download('stopwords'); nltk.download('wordnet')\" && python export_similarity_matrix.py"
+
+[deploy]
+startCommand = "gunicorn app:app"
+healthcheckPath = "/"
+healthcheckTimeout = 300  # Longer timeout for initial matrix generation
+
+[nixpacks]
+python-version = "3.11.7" 
