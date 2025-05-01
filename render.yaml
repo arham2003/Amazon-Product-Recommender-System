@@ -8,7 +8,6 @@ services:
       python export_similarity_matrix.py
     startCommand: gunicorn app:app
     repo: https://github.com/yourusername/amazon-recommendation-system # Replace with your actual GitHub repo URL
-    branch: main  # or the branch you want to deploy
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
