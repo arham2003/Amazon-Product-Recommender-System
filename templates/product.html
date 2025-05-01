@@ -8,6 +8,29 @@
         .product-main-img { max-height: 400px; object-fit: contain; }
         .review-card { border-left: 4px solid #0d6efd; }
         .review-content { max-height: 150px; overflow-y: auto; }
+        .recommendation-card { transition: transform 0.2s; }
+        .recommendation-card:hover { transform: translateY(-5px); }
+        .map-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.75rem;
+            background-color: rgba(0,0,0,0.6);
+        }
+        .similarity-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 60px;
+            height: 4px;
+            background-color: #ccc;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .similarity-fill {
+            height: 100%;
+            background-color: #0d6efd;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -75,12 +98,20 @@
 
         <hr class="my-5">
 
-        <h3 class="my-5">People Also Bought</h3>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3>People Also Bought</h3>
+            <div class="d-flex align-items-center">
+                <span class="badge bg-dark me-2">MAP@5: {{ "%.3f"|format(recommendations.iloc[0]['map'] if not recommendations.empty else 0) }}</span>
+                <span class="text-muted small">Based on enhanced similarity model</span>
+            </div>
+        </div>
+        
         <div class="row row-cols-1 row-cols-md-5 g-4">
             {% for rec in recommendations.itertuples() %}
             <div class="col">
-                <div class="card h-100 recommendation-card">
+                <div class="card h-100 recommendation-card position-relative">
                     <img src="{{ rec.img_link }}" class="card-img-top" alt="{{ rec.product_name }}" style="height: 150px; object-fit: contain;">
+                    <span class="badge map-badge">Sim: {{ "%.2f"|format(rec.similarity) }}</span>
                     <div class="card-body">
                         <h6 class="card-title">{{ rec.product_name }}</h6>
                         <div class="d-flex justify-content-between align-items-center">

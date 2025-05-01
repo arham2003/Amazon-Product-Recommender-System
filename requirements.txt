@@ -1,0 +1,7 @@
+flask
+pandas
+numpy
+nltk
+scikit-learn
+wordninja
+python-dateutil
